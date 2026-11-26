@@ -1,0 +1,38 @@
+[
+ {
+  "no": 1,
+  "ja": "食べる",
+  "base": "eat",
+  "en": "ate"
+ },
+ {
+  "no": 2,
+  "ja": "行く",
+  "base": "go",
+  "en": "went"
+ },
+ {
+  "no": 3,
+  "ja": "見る",
+  "base": "see",
+  "en": "saw"
+ },
+ {
+  "no": 4,
+  "ja": "書く",
+  "base": "write",
+  "en": "wrote"
+ },
+ {
+  "no": 5,
+  "ja": "飲む",
+  "base": "drink",
+  "en": "drank"
+ },
+ {
+  "no": 6,
+  "ja": "走る",
+  "base": "run",
+  "en": "ran"
+ }
+]

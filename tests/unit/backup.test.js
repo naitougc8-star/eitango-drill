@@ -1,0 +1,90 @@
+import { describe, it, expect } from 'vitest';
+import { makeBackup, backupFileName, parseBackup, mergeBackup, dataSize, formatSize } from '../../backup.js';
+import { addWords, createSet } from '../../sets.js';
+
+describe('バックアップ', () => {
+  it('書き出して読み込むと、テストと語が元に戻る', () => {
+    const sets = [], words = [];
+    const s = createSet(sets, '中間テスト');
+    addWords(words, s.id, [{ en: '天井', ja: 'てんじょう' }]);
+    const back = parseBackup(JSON.stringify(makeBackup(sets, words)));
+    expect(back.sets).toEqual(sets);
+    expect(back.words).toEqual(words);
+  });
+
+  it('ほかのファイルは、理由を付けて断る', () => {
+    expect(() => parseBackup('not json')).toThrow('ファイルの形式が違います');
+    expect(() => parseBackup('{"a":1}')).toThrow('このアプリのバックアップファイルではありません');
+    expect(() => parseBackup(JSON.stringify({ app: 'eitango-drill', version: 99, sets: [], words: [] }))).toThrow('新しい版');
+  });
+
+  it('ファイル名に日時を入れる', () => {
+    expect(backupFileName(new Date(2026, 9, 12, 15, 3))).toBe('eitango-drill-20261012-1503.json');
+  });
+
+  it('合わせる: ないテスト・語は足し、同じ語は新しく更新した方の成績を残す', () => {
+    const set = { id: 's1', name: '中間', updatedAt: 1 };
+    const ipad = {
+      sets: [set],
+      words: [
+        { id: 'a', en: '天井', setId: 's1', result: 'pass', passedAt: 1, updatedAt: 100 },
+        { id: 'b', en: '期限', setId: 's1', result: 'fail', misses: 1, updatedAt: 300 },
+      ],
+    };
+    const iphone = {
+      sets: [{ ...set }, { id: 's2', name: '期末', updatedAt: 5 }],
+      words: [
+        { id: 'a', en: '天井', setId: 's1', result: 'fail', misses: 1, updatedAt: 200 }, // iPhone の方が新しい
+        { id: 'b', en: '期限', setId: 's1', result: 'pass', passedAt: 1, updatedAt: 250 }, // iPad の方が新しい
+        { id: 'c', en: '保護', setId: 's2', updatedAt: 10 },
+      ],
+    };
+    const r = mergeBackup(ipad, iphone);
+    expect(r.sets.map((s) => s.name)).toEqual(['中間', '期末']);
+    expect(r.addedSets).toBe(1);
+    expect(r.addedWords).toBe(1);
+    expect(r.updatedWords).toBe(1);
+    const by = Object.fromEntries(r.words.map((w) => [w.id, w]));
+    expect(by.a.result).toBe('fail');
+    expect(by.b.result).toBe('fail');
+    expect(by.c.en).toBe('保護');
+    // 元のデータは書き換えない
+    expect(ipad.words[0].result).toBe('pass');
+  });
+
+  it('合わせる: テストの名前は、新しく変えた方を残す', () => {
+    const r = mergeBackup({ sets: [{ id: 's1', name: '古い名前', updatedAt: 1 }], words: [] }, { sets: [{ id: 's1', name: '新しい名前', updatedAt: 2 }], words: [] });
+    expect(r.sets).toEqual([{ id: 's1', name: '新しい名前', updatedAt: 2 }]);
+  });
+
+  it('データの大きさ: 200 語で 100KB 未満(写真は保存しない)', () => {
+    const sets = [], words = [];
+    const s = createSet(sets, '中間テスト');
+    const entries = Array.from({ length: 200 }, (_, i) => ({ en: `漢字${i}`, ja: `かんじ${i}` }));
+    addWords(words, s.id, entries);
+    const size = dataSize({ sets, words });
+    expect(size).toBeLessThan(100 * 1024);
+    expect(formatSize(size)).toMatch(/KB$/);
+    expect(formatSize(3 * 1024 * 1024)).toBe('3.0 MB');
+  });
+  it('写真ごとのまとまりの名前も、新しく変えた方を残す', () => {
+    const r = mergeBackup(
+      { sets: [{ id: 's1', name: 'テスト', updatedAt: 1, groupNames: { 1: '古い名前' } }], words: [] },
+      { sets: [{ id: 's1', name: 'テスト', updatedAt: 2, groupNames: { 1: '吉野弘', 2: '芥川' } }], words: [] },
+    );
+    expect(r.sets[0].groupNames).toEqual({ 1: '吉野弘', 2: '芥川' });
+  });
+  it('入れているフォルダーも、新しく変えた方を残す(新しい方で出していれば、出す)', () => {
+    const into = mergeBackup({ sets: [{ id: 's1', name: 'No.1', updatedAt: 1 }], words: [] }, { sets: [{ id: 's1', name: 'No.1', updatedAt: 2, folder: '2学期' }], words: [] });
+    expect(into.sets[0].folder).toBe('2学期');
+    const out = mergeBackup({ sets: [{ id: 's1', name: 'No.1', updatedAt: 1, folder: '2学期' }], words: [] }, { sets: [{ id: 's1', name: 'No.1', updatedAt: 2 }], words: [] });
+    expect(out.sets[0].folder).toBeUndefined();
+  });
+  it('作っただけのフォルダー(テストの入っていないフォルダー)も、書き出して合わせる', () => {
+    const inc = parseBackup(JSON.stringify(makeBackup([{ id: 's1', name: 'No.1' }], [], new Date(0), ['2学期', '3学期'])));
+    expect(inc.folders).toEqual(['2学期', '3学期']);
+    const r = mergeBackup({ sets: [], words: [], folders: ['1学期', '2学期'] }, inc);
+    expect(r.folders).toEqual(['1学期', '2学期', '3学期']);
+    expect(parseBackup(JSON.stringify(makeBackup([], [], new Date(0)))).folders).toEqual([]);
+  });
+});
