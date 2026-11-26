@@ -15,7 +15,15 @@ async function stubSpeech(page) {
   await page.addInitScript(() => {
     window.__spoken = [];
     const fake = {
-      speak: (u) => window.__spoken.push({ text: u.text, rate: u.rate, lang: u.lang }),
+      // 音量 0 の読み上げ(iPhone で読み上げを使えるようにするためのもの)は記録しない
+      speak: (u) => {
+        if (u.volume === 0) return;
+        window.__spoken.push({ text: u.text, rate: u.rate, lang: u.lang });
+        u.onstart?.();
+      },
+      speaking: false,
+      pending: false,
+      paused: false,
       cancel: () => {},
       getVoices: () => [{ name: 'Samantha', lang: 'en-US', localService: true }],
       addEventListener: () => {},
@@ -114,7 +122,12 @@ test('写真: 動詞の過去形の表を読み取り、「原形 → 過去形�
   await page.fill('#answer', 'ate');
   await page.press('#answer', 'Enter');
   await expect(page.locator('#verdict-title')).toHaveText('○ 正解!(現在形・過去形とも)');
-  expect(await page.evaluate(() => window.__spoken.map((s) => s.text))).toEqual(['eat, ate']);
+  expect(await page.evaluate(() => window.__spoken.map((s) => s.text))).toEqual(['eat', 'ate']); // 現在形と過去形を、1 語ずつ分けて読む
+  // それぞれの 🔊 で、現在形だけ・過去形だけを聞ける
+  await page.click('.spell-part[data-part="base"] .btn-say');
+  await page.click('.spell-part[data-part="past"] .btn-say');
+  expect(await page.evaluate(() => window.__spoken.slice(-2).map((s) => s.text))).toEqual(['eat', 'ate']);
+  await expect(page.locator('#verdict .say-row')).toBeHidden();
   // 片方だけ合っていれば、それぞれに ○・× を付けて、不合格
   await page.click('#btn-next');
   await expect(page.locator('#q-ja')).toHaveText('行く');

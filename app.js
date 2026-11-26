@@ -5,8 +5,8 @@ import { newId, loadScript } from './util.js';
 import { loadImage, readTable } from './ocr.js';
 import { Marker } from './marker.js';
 import { parsePaste } from './entries.js';
-import { checkSpelling, normalize, speakText } from './spell.js';
-import { speak, canSpeak, stopSpeaking } from './speak.js';
+import { checkSpelling, normalize } from './spell.js';
+import { speak, canSpeak, stopSpeaking, unlockSpeech, voiceName, onVoices } from './speak.js';
 import * as storage from './storage.js';
 import { migrate, wordsOf, addWords, groupsOf, createSet, deleteSet, nextPhoto, sameEntry } from './sets.js';
 import { makeBackup, backupFileName, parseBackup, mergeBackup, dataSize, formatSize, STORAGE_LIMIT } from './backup.js';
@@ -1196,13 +1196,29 @@ function wordById(id) {
   return state.words.find((w) => w.id === id);
 }
 
-/** 発音を読み上げる(設定で「読み上げない」のときは何もしない。force: 🔊 ボタン) */
-function say(w, force = false) {
+/**
+ * 発音を読み上げる(設定で「読み上げない」のときは何もしない)。
+ * @param {boolean} force 🔊 ボタン(設定にかかわらず読む)
+ * @param {'base' | 'past' | null} part 過去形の問題で、現在形だけ・過去形だけを読む(省くと、現在形と過去形を 1 語ずつ分けて読む)
+ */
+function say(w, force = false, part = null) {
   if (!w) return;
   if (state.settings.speech === 'off' && !force) return;
-  // 過去形は「現在形, 過去形」の順に読む(例: find, found)
-  const text = asksBase(w) ? `${speakText(w.base)}, ${speakText(w.en)}` : w.en;
-  speak(text, { rate: state.settings.speech === 'slow' ? 'slow' : 'normal' });
+  const texts = !asksBase(w) ? [w.en] : part === 'base' ? [w.base] : part === 'past' ? [w.en] : [w.base, w.en];
+  speak(texts, { rate: state.settings.speech === 'slow' ? 'slow' : 'normal' });
+}
+
+/** 🔊 ボタン(label: 「🔊 find」のように、読む語を添える) */
+function sayButton(w, part, label) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn small btn-say';
+  if (part) b.dataset.part = part;
+  b.textContent = label ? `🔊 ${label}` : '🔊';
+  b.setAttribute('aria-label', `${label || w.en} の発音を聞く`);
+  b.lang = 'en';
+  b.addEventListener('click', () => say(w, true, part));
+  return b;
 }
 
 /**
@@ -1299,7 +1315,7 @@ function onCheck(e) {
 }
 
 /** 1 字ずつの対応から、答えと書いたつづりを、違った字を赤で示して描く */
-function spellView(part) {
+function spellView(part, w) {
   const { r, answer, label } = part;
   const box = document.createElement('div');
   box.className = 'spell-part ' + (r.ok ? 'ok' : 'ng');
@@ -1324,6 +1340,8 @@ function spellView(part) {
     return { d, sp };
   };
   const A = row('答え', 'spell-answer');
+  // 過去形の問題は、現在形・過去形のそれぞれに 🔊(答えの横)
+  if (label) A.d.append(sayButton(w, label === '現在形' ? 'base' : 'past', null));
   const I = row('あなた', 'spell-input');
   const ans = A.sp, inp = I.sp;
   const ch = (c) => (c === ' ' ? '␣' : c);
@@ -1378,7 +1396,9 @@ function showVerdict(w, parts) {
   const box = $('spell-box');
   box.textContent = '';
   box.classList.toggle('two', parts.length > 1);
-  for (const p of parts) box.appendChild(spellView(p));
+  for (const p of parts) box.appendChild(spellView(p, w));
+  // 1 語の問題は、下の「🔊 発音」で聞く(過去形の問題は、それぞれの答えの横の 🔊)
+  document.querySelector('#verdict .say-row').hidden = parts.length > 1;
   const wrong = parts.filter((p) => !p.r.ok);
   $('verdict-note').textContent = ok
     ? ''
@@ -1542,13 +1562,12 @@ function showFlashAnswer() {
     p.textContent = w.en;
     line.append(b, p);
   } else line.textContent = w.en;
-  const again = document.createElement('button');
-  again.type = 'button';
-  again.className = 'btn small btn-say';
-  again.textContent = '🔊';
-  again.setAttribute('aria-label', '発音をもう一度聞く');
-  again.addEventListener('click', () => say(w, true));
-  box.append(line, again);
+  // 発音: 過去形は、現在形・過去形を別々に聞ける
+  const says = document.createElement('div');
+  says.className = 'row say-row';
+  if (asksBase(w)) says.append(sayButton(w, 'base', w.base), sayButton(w, 'past', w.en));
+  else says.append(sayButton(w, null, w.en));
+  box.append(line, says);
   const q = $('flash-q');
   q.style.fontSize = Math.max(20, Math.round(Number(q.dataset.size || 60) * 0.55)) + 'px';
   $('flash-card').classList.add('answered');
@@ -1821,15 +1840,26 @@ function init() {
   restore();
   bindRadio('theme', 'theme', applyTheme);
   applyTheme();
+  // iPhone・iPad: 最初に画面を触ったときに、読み上げを使えるようにする(ユーザーの操作の中でしか有効にできない)
+  for (const type of ['touchend', 'click', 'keydown']) document.addEventListener(type, unlockSpeech, { once: true, capture: true });
   bindRadio('speech', 'speech', (v) => {
     if (v !== 'off') speak('OK', { rate: v }); // 選んだ速さで試しに読み上げる(iPhone では、操作したときに声が出せるようになる)
   });
   bindRadio('order', 'order');
   bindRadio('paste-kind', 'pasteKind');
-  if (!canSpeak()) {
+  // 発音の読み上げ: 使う声の名前を出す(声が出ないときに、どの声を使っているかがわかるように)
+  const showVoice = () => {
     $('speech-note').hidden = false;
-    $('speech-note').textContent = 'この端末・ブラウザでは、発音の読み上げが使えません。';
-  }
+    if (!canSpeak()) $('speech-note').textContent = 'この端末・ブラウザでは、発音の読み上げが使えません。';
+    else {
+      const name = voiceName();
+      $('speech-note').textContent = name
+        ? `使う声: ${name}。声が出ないときは、iPhone の消音(マナーモード)を切り、音量を上げてください。`
+        : '英語の声が見つかりません(端末の設定 → アクセシビリティ → 読み上げコンテンツ → 声 → 英語 で、声を入れてください)。';
+    }
+  };
+  showVoice();
+  onVoices(showVoice);
   renderWordList();
 
   $('message-close').addEventListener('click', hideMessage);

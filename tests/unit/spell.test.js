@@ -70,3 +70,14 @@ describe('読み上げの声', () => {
     expect(pickVoice([{ name: 'X', lang: 'en_AU' }]).name).toBe('X');
   });
 });
+
+describe('読み上げの声(端末の中の声・品質)', () => {
+  it('一覧にあっても端末に入っていない声は選ばず、同じ名前ならプレミアム・拡張の声を先に選ぶ', () => {
+    const voices = [
+      { name: 'Ava', lang: 'en-US', localService: false, voiceURI: 'Ava' },
+      { name: 'Samantha', lang: 'en-US', localService: true, voiceURI: 'com.apple.voice.compact.en-US.Samantha' },
+      { name: 'Samantha (Enhanced)', lang: 'en-US', localService: true, voiceURI: 'com.apple.voice.enhanced.en-US.Samantha' },
+    ];
+    expect(pickVoice(voices).name).toBe('Samantha (Enhanced)');
+  });
+});
