@@ -467,8 +467,50 @@ function groupHead(g, set) {
   const title = document.createElement('span');
   title.className = 'gtitle';
   title.append(name, count);
-  head.append(title, stats.box, reset, on, del, fold);
+  head.append(title, stats.box, reset, on);
+  if (groupsOf(state.words, set.id).length > 1) head.append(mergeButton(g, set));
+  head.append(del, fold);
   return head;
+}
+
+/** 「まとめる」ボタン(このまとまりの語を、同じテストのほかのまとまりへ移す) */
+function mergeButton(g, set) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn small gmerge';
+  b.textContent = 'まとめる';
+  b.setAttribute('aria-label', `「${groupLabelOf(set, g)}」をほかのまとまりにまとめる`);
+  b.addEventListener('click', () => mergeGroup(g, set));
+  return b;
+}
+
+/**
+ * まとまりを、同じテストのほかのまとまりにまとめる。語(成績も)はそのまま移し、移した先では番号順に並ぶ。
+ * 移したあとの、空になったまとまりの名前は消す。
+ */
+async function mergeGroup(g, set) {
+  const others = groupsOf(state.words, set.id).filter((x) => x.key !== g.key);
+  if (!others.length) return;
+  const choices = others.map((x) => ({ value: x.key, label: `${groupLabelOf(set, x)}(${x.words.length} 問)` }));
+  const to = await ask(`「${groupLabelOf(set, g)}」の ${g.words.length} 問を、どのまとまりにまとめますか?(成績はそのまま。まとめたあとは番号順に並びます)`, choices[0].value, choices);
+  if (to === null) return;
+  const fromName = groupLabelOf(set, g), toName = groupLabelOf(set, others.find((x) => x.key === to));
+  const photo = to === 'manual' ? 0 : Number(to);
+  const now = Date.now();
+  for (const w of g.words) {
+    w.photo = photo;
+    w.manual = photo === 0;
+    w.updatedAt = now;
+  }
+  if (set.groupNames && set.groupNames[g.key]) {
+    set.groupNames = { ...set.groupNames };
+    delete set.groupNames[g.key];
+  }
+  set.updatedAt = now;
+  hideMessage();
+  persist();
+  renderWordList();
+  showMessage(`「${fromName}」を「${toName}」にまとめました。`, 'info');
 }
 
 function groupLabelOf(set, g) {
@@ -786,25 +828,31 @@ function renderSets() {
         const gl = document.createElement('li');
         gl.className = 'tree-group';
         gl.dataset.group = g.key;
+        // [出題するチェック][名前(タップで名前を変える)][問の数][まとめる]
         const label = document.createElement('label');
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.checked = g.words.every((w) => w.enabled);
         cb.indeterminate = !cb.checked && g.words.some((w) => w.enabled);
+        cb.setAttribute('aria-label', `「${groupLabelOf(set, g)}」から出題する`);
         cb.addEventListener('change', () => {
           setEnabled(g.words, cb.checked);
           syncDrill([set.id]);
           persist();
           renderWordList();
         });
-        const t = document.createElement('span');
+        label.append(cb);
+        const t = document.createElement('button');
+        t.type = 'button';
         t.className = 'tree-gname';
         t.textContent = groupLabelOf(set, g);
+        t.title = 'タップして名前を変える(12 文字まで)';
+        t.addEventListener('click', () => renameGroup(g, set));
         const n = document.createElement('span');
         n.className = 'tree-count';
         n.textContent = `(${g.words.length} 問)`;
-        label.append(cb, t, n);
-        gl.appendChild(label);
+        gl.append(label, t, n);
+        if (groupsOf(state.words, set.id).length > 1) gl.append(mergeButton(g, set));
         ul.appendChild(gl);
       }
       if (!ul.children.length) {

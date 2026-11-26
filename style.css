@@ -628,3 +628,10 @@ details.fold > summary:focus-visible { outline: 2px solid var(--accent); outline
 .flash-word[lang="en"] { font-family: ui-rounded, "SF Pro Rounded", "Helvetica Neue", Arial, sans-serif; font-weight: 600; }
 .flash-sub .flash-base { color: var(--accent); font-weight: 700; font-size: 1.4em; }
 .flash-a .btn-say { margin-top: 6px; }
+
+/* ツリーの写真ごとのまとまり: [チェック][名前(タップで名前を変える)][問の数][まとめる] */
+.tree-group { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.tree-group label { min-height: 44px; min-width: 32px; }
+.tree-gname { font: inherit; color: var(--text); background: none; border: none; padding: 6px 2px; min-height: 40px; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 4px; }
+.tree-group .gmerge { margin-left: auto; }
+.btn.gmerge { min-height: 36px; padding: 2px 12px; font-size: 14px; }

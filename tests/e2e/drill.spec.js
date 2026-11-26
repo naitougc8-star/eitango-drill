@@ -238,3 +238,26 @@ test('バックアップ: 書き出したファイルを、ほかの端末(別�
   await expect(iphone.locator('#word-list li')).toHaveCount(3);
   await expect(iphone.locator('#word-list li.kind-past input.base')).toHaveValue('eat');
 });
+
+test('写真ごとのまとまり: ツリーで名前を変え、ほかのまとまりにまとめると番号順に並ぶ', async ({ page }) => {
+  await open(page);
+  await paste(page, 'word', '101 walk 歩く\n103 food 食べ物\n105 real 実際の');
+  await paste(page, 'word', '104 win 勝つ\n102 stay いる、とどまる');
+  await expect(page.locator('.tree-gname')).toHaveText(['貼り付け', '貼り付け 2']);
+  // ツリーの名前をタップして変える
+  await page.locator('.tree-gname').nth(1).click();
+  await page.fill('#ask-input', '追加分');
+  await page.click('#ask-ok');
+  await expect(page.locator('.tree-gname')).toHaveText(['貼り付け', '追加分']);
+  // 「追加分」を「貼り付け」にまとめる
+  await page.locator('.tree-group .gmerge').nth(1).click();
+  await page.selectOption('#ask-select', { label: '貼り付け(3 問)' });
+  await page.click('#ask-ok');
+  await expect(page.locator('.tree-gname')).toHaveText(['貼り付け']);
+  await expect(page.locator('.tree-group .gmerge')).toHaveCount(0);
+  await expect(page.locator('#word-list li')).toHaveCount(5);
+  expect(await page.$$eval('#word-list li', (lis) => lis.map((li) => li.dataset.word))).toEqual(['walk', 'stay', 'food', 'win', 'real']);
+  // 再読み込みしても残る
+  await page.reload();
+  await expect(page.locator('.tree-gname')).toHaveText(['貼り付け']);
+});

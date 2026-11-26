@@ -92,7 +92,11 @@ export function groupsOf(words, setId) {
       key: String(key),
       // 写真の番号は、消した写真があっても 1 から詰めて表示する
       label: key === 'manual' ? '手で追加した語' : `写真 ${all.filter((g) => typeof g[0] === 'number' && g[0] <= key).length}`,
-      words: list,
+      // 番号順(単語 → 過去形の順。番号のない語は、入れた順のまま後ろ)。まとまりをまとめたときも番号順になる
+      words: list
+        .map((w, i) => ({ w, i }))
+        .sort((a, b) => (a.w.kind === 'past') - (b.w.kind === 'past') || (a.w.no ?? Infinity) - (b.w.no ?? Infinity) || a.i - b.i)
+        .map((x) => x.w),
     }));
 }
 

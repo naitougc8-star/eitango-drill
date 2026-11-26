@@ -77,3 +77,14 @@ describe('テスト(出題の範囲)', () => {
     expect(createSet(sets, '  ').name).toBe('テスト 2');
   });
 });
+
+describe('まとまりの中の並び', () => {
+  it('番号順(単語 → 過去形。番号のない語は入れた順で後ろ)。まとめたあとも番号順', () => {
+    const words = [];
+    const { id } = createSet([], 'x');
+    addWords(words, id, [{ en: 'real', ja: '実際の', no: 105 }, { en: 'walk', ja: '歩く', no: 101 }, { en: 'ate', ja: '食べる', base: 'eat', kind: 'past', no: 1 }, { en: 'cat', ja: 'ねこ' }]);
+    addWords(words, id, [{ en: 'stay', ja: 'いる', no: 102 }]);
+    for (const w of words) w.photo = 1; // 写真 2 を写真 1 にまとめる
+    expect(groupsOf(words, id)[0].words.map((w) => w.en)).toEqual(['walk', 'stay', 'real', 'cat', 'ate']);
+  });
+});
