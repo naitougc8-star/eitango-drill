@@ -635,3 +635,16 @@ details.fold > summary:focus-visible { outline: 2px solid var(--accent); outline
 .tree-gname { font: inherit; color: var(--text); background: none; border: none; padding: 6px 2px; min-height: 40px; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 4px; }
 .tree-group .gmerge { margin-left: auto; }
 .btn.gmerge { min-height: 36px; padding: 2px 12px; font-size: 14px; }
+
+/* 過去形の問題: 現在形と過去形の 2 つの欄 */
+.answer-fields { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 10px 14px; }
+.answer-field { flex: 1 1 260px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.answer-field .answer-input { flex: 0 0 auto; width: 100%; box-sizing: border-box; }
+.answer-label { text-align: center; font-size: clamp(20px, 3.6vw, 28px); font-weight: 700; color: var(--muted); }
+.answer-form .btn.big#btn-check { flex: 1 1 100%; }
+.spell-box { display: grid; justify-content: center; gap: 4px 28px; margin: 4px auto 8px; }
+.spell-box.two { grid-template-columns: repeat(auto-fit, minmax(260px, auto)); }
+.spell-part-title { margin: 6px 0 2px; font-weight: 800; font-size: 18px; text-align: center; }
+.spell-part.ok .spell-part-title { color: var(--ok); }
+.spell-part.ng .spell-part-title { color: var(--ng); }
+.say-row { justify-content: center; margin: 0; }

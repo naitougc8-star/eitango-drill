@@ -5,7 +5,7 @@ import { newId, loadScript } from './util.js';
 import { loadImage, readTable } from './ocr.js';
 import { Marker } from './marker.js';
 import { parsePaste } from './entries.js';
-import { checkSpelling, normalize } from './spell.js';
+import { checkSpelling, normalize, speakText } from './spell.js';
 import { speak, canSpeak, stopSpeaking } from './speak.js';
 import * as storage from './storage.js';
 import { migrate, wordsOf, addWords, groupsOf, createSet, deleteSet, nextPhoto, sameEntry } from './sets.js';
@@ -1200,7 +1200,9 @@ function wordById(id) {
 function say(w, force = false) {
   if (!w) return;
   if (state.settings.speech === 'off' && !force) return;
-  speak(w.en, { rate: state.settings.speech === 'slow' ? 'slow' : 'normal' });
+  // 過去形は「現在形, 過去形」の順に読む(例: find, found)
+  const text = asksBase(w) ? `${speakText(w.base)}, ${speakText(w.en)}` : w.en;
+  speak(text, { rate: state.settings.speech === 'slow' ? 'slow' : 'normal' });
 }
 
 /**
@@ -1232,6 +1234,11 @@ function startRound(ids) {
 
 let current = null; // { word, judged, pass, overridden }
 
+/** 過去形の問題で、現在形(原形)も書くか(原形が入っていないときは、過去形だけ) */
+function asksBase(w) {
+  return w.kind === 'past' && !!normalize(w.base);
+}
+
 function renderQuestion() {
   const s = state.session;
   const w = wordById(s.queue[s.index]);
@@ -1241,24 +1248,26 @@ function renderQuestion() {
   $('screen-drill').dataset.kind = w.kind;
   $('q-no').textContent = [w.kind === 'past' ? '過去形' : '', w.no != null ? `No.${w.no}` : ''].filter(Boolean).join(' ');
   $('q-ja').textContent = w.ja || '';
-  $('q-ja').classList.toggle('small', w.kind === 'past');
+  $('q-ja').classList.remove('small');
+  // 過去形: 日本語の意味だけを見て、現在形と過去形を両方書く(原形がないときは、原形を見せて過去形だけ)
   const qb = $('q-base');
-  qb.hidden = w.kind !== 'past';
   qb.textContent = '';
-  if (w.kind === 'past') {
-    const b = document.createElement('span');
-    b.lang = 'en';
-    b.textContent = w.base || '';
-    qb.append(b, ' → 過去形は?');
+  qb.hidden = !(w.kind === 'past' && !asksBase(w) && !w.ja);
+  const two = asksBase(w);
+  $('field-base').hidden = !two;
+  $('answer-label').hidden = !two;
+  $('answer-form').classList.toggle('two', two);
+  $('answer').setAttribute('aria-label', two ? '過去形(英語)' : '答え(英語)');
+  $('answer').setAttribute('enterkeyhint', 'done');
+  for (const id of ['answer-base', 'answer']) {
+    $(id).value = '';
+    $(id).readOnly = false;
   }
-  const input = $('answer');
-  input.value = '';
-  input.readOnly = false;
   $('btn-check').hidden = false;
   $('verdict').hidden = true;
   $('btn-skip').disabled = false;
   // iPad ではキーボードが画面を隠すので、自動で入力欄にカーソルを置くのは、外付けキーボード・PC のときだけ
-  if (!matchMedia('(pointer: coarse)').matches) input.focus();
+  if (!matchMedia('(pointer: coarse)').matches) $(two ? 'answer-base' : 'answer').focus();
 }
 
 /** 答え合わせ(入力欄で Enter / 「答え合わせ」) */
@@ -1270,25 +1279,53 @@ function onCheck(e) {
     return;
   }
   const w = current.word;
-  const r = checkSpelling($('answer').value, w.en);
+  // 過去形の問題: 現在形と過去形を、それぞれ確かめる(両方合っていれば正解)
+  const parts = asksBase(w)
+    ? [
+        { label: '現在形', answer: w.base, r: checkSpelling($('answer-base').value, w.base) },
+        { label: '過去形', answer: w.en, r: checkSpelling($('answer').value, w.en) },
+      ]
+    : [{ label: '', answer: w.en, r: checkSpelling($('answer').value, w.en) }];
   current.judged = true;
-  current.pass = r.ok;
-  $('answer').readOnly = true;
-  $('answer').blur();
+  current.pass = parts.every((p) => p.r.ok);
+  for (const id of ['answer-base', 'answer']) {
+    $(id).readOnly = true;
+    $(id).blur();
+  }
   $('btn-check').hidden = true;
   $('btn-skip').disabled = true;
-  showVerdict(w, r);
+  showVerdict(w, parts);
   say(w);
 }
 
 /** 1 字ずつの対応から、答えと書いたつづりを、違った字を赤で示して描く */
-function showVerdict(w, r) {
-  $('verdict').hidden = false;
-  $('verdict').className = 'verdict ' + (r.ok ? 'pass' : 'fail');
-  $('verdict-title').textContent = r.ok ? '○ 正解!' : r.empty ? '× 答えを見て覚えましょう' : `× ちがいます(${r.errors} か所)`;
-  const ans = $('spell-answer'), inp = $('spell-input');
-  ans.textContent = '';
-  inp.textContent = '';
+function spellView(part) {
+  const { r, answer, label } = part;
+  const box = document.createElement('div');
+  box.className = 'spell-part ' + (r.ok ? 'ok' : 'ng');
+  if (label) box.dataset.part = label === '現在形' ? 'base' : 'past';
+  if (label) {
+    const h = document.createElement('p');
+    h.className = 'spell-part-title';
+    h.textContent = `${label} ${r.ok ? '○' : r.empty ? '× (書いていない)' : `× (${r.errors} か所)`}`;
+    box.appendChild(h);
+  }
+  const row = (name, cls) => {
+    const d = document.createElement('div');
+    d.className = 'spell-row';
+    const l = document.createElement('span');
+    l.className = 'spell-label';
+    l.textContent = name;
+    const sp = document.createElement('span');
+    sp.className = 'spell ' + cls;
+    sp.lang = 'en';
+    d.append(l, sp);
+    box.appendChild(d);
+    return { d, sp };
+  };
+  const A = row('答え', 'spell-answer');
+  const I = row('あなた', 'spell-input');
+  const ans = A.sp, inp = I.sp;
   const ch = (c) => (c === ' ' ? '␣' : c);
   // 答えは見せる形(大文字・小文字そのまま)の字を、対応の順に出す
   const form = [...r.form];
@@ -1322,16 +1359,33 @@ function showVerdict(w, r) {
       inp.append(b);
     }
   }
-  if (!r.form) ans.textContent = w.en;
-  $('spell-input-row').hidden = r.empty || r.ok;
-  // 正解のときは、答えの全体(~ や ( ) も含めて)を見せる
-  if (r.ok) ans.textContent = w.en;
-  $('verdict-note').textContent = r.ok
+  // 正解のときは、答えの全体(~ や ( ) も含めて)を見せ、「あなた」の行は出さない
+  if (r.ok || !r.form) ans.textContent = answer;
+  I.d.hidden = r.empty || r.ok;
+  return box;
+}
+
+function showVerdict(w, parts) {
+  const ok = parts.every((p) => p.r.ok);
+  $('verdict').hidden = false;
+  $('verdict').className = 'verdict ' + (ok ? 'pass' : 'fail');
+  if (parts.length === 1) {
+    const r = parts[0].r;
+    $('verdict-title').textContent = r.ok ? '○ 正解!' : r.empty ? '× 答えを見て覚えましょう' : `× ちがいます(${r.errors} か所)`;
+  } else {
+    $('verdict-title').textContent = ok ? '○ 正解!(現在形・過去形とも)' : `× ${parts.filter((p) => !p.r.ok).map((p) => p.label).join('・')}がちがいます`;
+  }
+  const box = $('spell-box');
+  box.textContent = '';
+  box.classList.toggle('two', parts.length > 1);
+  for (const p of parts) box.appendChild(spellView(p));
+  const wrong = parts.filter((p) => !p.r.ok);
+  $('verdict-note').textContent = ok
     ? ''
-    : r.empty
+    : wrong.every((p) => p.r.empty)
       ? '何も書いていないので、まちがいとして記録します。'
       : '赤い字が違うところです(答え: 書き落とした字、あなた: 違う字・余分な字)。大文字・小文字の違いは数えません。';
-  $('btn-override').hidden = r.ok;
+  $('btn-override').hidden = ok;
   $('btn-next').focus();
 }
 
@@ -1457,14 +1511,10 @@ function renderFlash() {
   const q = $('flash-q'), sub = $('flash-sub');
   q.textContent = w.ja || '';
   sub.textContent = '';
-  if (w.kind === 'past') {
-    const b = document.createElement('span');
-    b.lang = 'en';
-    b.className = 'flash-base';
-    b.textContent = w.base;
-    sub.append(b, ' → 過去形は?');
-  } else if (w.no != null) sub.textContent = `No.${w.no}`;
-  const qSize = flashFit([...q.textContent].length, w.kind === 'past' ? 56 : 72);
+  // 過去形: 日本語の意味だけを見て、現在形と過去形を思い浮かべる
+  if (w.kind === 'past') sub.textContent = asksBase(w) ? '現在形と過去形は?' : '過去形は?';
+  else if (w.no != null) sub.textContent = `No.${w.no}`;
+  const qSize = flashFit([...q.textContent].length, 72);
   q.style.fontSize = qSize + 'px';
   q.dataset.size = qSize;
   $('flash-card').classList.remove('answered');
@@ -1870,6 +1920,13 @@ function init() {
   $('btn-start-new').addEventListener('click', () => startSession('new'));
   $('btn-start-miss3').addEventListener('click', () => startSession('miss3'));
   $('answer-form').addEventListener('submit', onCheck);
+  // 現在形の欄で Enter: 過去形の欄へ(答え合わせのあとは、次へ)
+  $('answer-base').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    if (current && current.judged) onNext();
+    else $('answer').focus();
+  });
   $('btn-say').addEventListener('click', () => current && say(current.word, true));
   $('btn-override').addEventListener('click', onOverride);
   $('btn-next').addEventListener('click', onNext);

@@ -105,11 +105,31 @@ test('写真: 動詞の過去形の表を読み取り、「原形 → 過去形�
   await expect(page.locator('#word-list li.kind-past')).toHaveCount(6);
   await page.locator('input[name="order"][value="number"]').check({ force: true });
   await page.click('#btn-start');
-  await expect(page.locator('#q-base')).toHaveText('eat → 過去形は?');
+  // 日本語の意味だけを見て、現在形と過去形を両方書く
+  await expect(page.locator('#q-ja')).toHaveText('食べる');
+  await expect(page.locator('#field-base')).toBeVisible();
+  await page.fill('#answer-base', 'eat');
+  await page.press('#answer-base', 'Enter'); // 過去形の欄へ
+  await expect(page.locator('#answer')).toBeFocused();
   await page.fill('#answer', 'ate');
   await page.press('#answer', 'Enter');
-  await expect(page.locator('#verdict-title')).toHaveText('○ 正解!');
-  expect(await page.evaluate(() => window.__spoken.map((s) => s.text))).toEqual(['ate']);
+  await expect(page.locator('#verdict-title')).toHaveText('○ 正解!(現在形・過去形とも)');
+  expect(await page.evaluate(() => window.__spoken.map((s) => s.text))).toEqual(['eat, ate']);
+  // 片方だけ合っていれば、それぞれに ○・× を付けて、不合格
+  await page.click('#btn-next');
+  await expect(page.locator('#q-ja')).toHaveText('行く');
+  await page.fill('#answer-base', 'go');
+  await page.fill('#answer', 'goed');
+  await page.click('#btn-check');
+  await expect(page.locator('#verdict-title')).toHaveText('× 過去形がちがいます');
+  await expect(page.locator('.spell-part[data-part="base"] .spell-part-title')).toHaveText('現在形 ○');
+  await expect(page.locator('.spell-part[data-part="past"] .spell-part-title')).toHaveText('過去形 × (4 か所)');
+  await expect(page.locator('.spell-part[data-part="past"] .spell-answer')).toHaveText('went');
+  await page.click('#btn-next');
+  await expect(page.locator('#q-ja')).toHaveText('見る');
+  await page.click('#btn-quit');
+  await page.click('#ask-ok');
+  await expect(page.locator('#word-list li[data-word="went"] .res')).toHaveText('× 1 回まちがい');
 });
 
 test('出題: キーボードで入力し、違った字を赤で示す。結果は語の一覧に残る', async ({ page }) => {
@@ -130,21 +150,21 @@ test('出題: キーボードで入力し、違った字を赤で示す。結果
   await input.fill('wlak');
   await page.click('#btn-check');
   await expect(page.locator('#verdict-title')).toHaveText('× ちがいます(2 か所)');
-  await expect(page.locator('#spell-answer .bad')).toHaveText(['a', 'l']);
-  await expect(page.locator('#spell-input .bad')).toHaveText(['l', 'a']);
+  await expect(page.locator('.spell-answer .bad')).toHaveText(['a', 'l']);
+  await expect(page.locator('.spell-input .bad')).toHaveText(['l', 'a']);
   await page.click('#btn-next');
 
   await expect(page.locator('#q-ja')).toHaveText('理解を表す');
   await input.fill('i see');
   await page.press('#answer', 'Enter');
   await expect(page.locator('#verdict-title')).toHaveText('○ 正解!');
-  await expect(page.locator('#spell-answer')).toHaveText('I see');
+  await expect(page.locator('.spell-answer')).toHaveText('I see');
   await page.press('#answer', 'Enter'); // Enter をもう一度で次へ
 
   await expect(page.locator('#q-ja')).toHaveText('~するな、~しない');
   await input.fill('dont');
   await page.click('#btn-check');
-  await expect(page.locator('#spell-input .gap')).toHaveCount(1); // 書き落とした ' の所に _
+  await expect(page.locator('.spell-input .gap')).toHaveCount(1); // 書き落とした ' の所に _
   await page.click('#btn-override'); // 合格にする
   await expect(page.locator('#verdict-title')).toHaveText('○ 合格にしました');
   await page.click('#btn-next');

@@ -252,20 +252,30 @@
         <div id="q-ja" class="q-ja"></div>
         <div id="q-base" class="q-base" hidden></div>
       </div>
+      <!-- 単語: 英語を 1 つ書く。過去形: 現在形(原形)と過去形を両方書く -->
       <form id="answer-form" class="answer-form" autocomplete="off">
-        <input id="answer" class="answer-input" type="text" lang="en" inputmode="text" enterkeyhint="done"
-          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-          placeholder="英語で書く" aria-label="答え(英語)">
+        <div class="answer-fields">
+          <label class="answer-field" id="field-base" hidden>
+            <span class="answer-label">現在形</span>
+            <input id="answer-base" class="answer-input" type="text" lang="en" inputmode="text" enterkeyhint="next"
+              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              placeholder="英語で書く" aria-label="現在形(英語)">
+          </label>
+          <label class="answer-field">
+            <span class="answer-label" id="answer-label" hidden>過去形</span>
+            <input id="answer" class="answer-input" type="text" lang="en" inputmode="text" enterkeyhint="done"
+              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+              placeholder="英語で書く" aria-label="答え(英語)">
+          </label>
+        </div>
         <button type="submit" id="btn-check" class="btn primary big">答え合わせ</button>
       </form>
       <p class="hint input-hint">キーボードで打つか、iPad では Apple Pencil で入力欄に直接書けます(スクリブル)。</p>
       <div id="verdict" class="verdict" hidden>
         <p id="verdict-title" class="verdict-title"></p>
-        <div class="spell-rows">
-          <div class="spell-row"><span class="spell-label">答え</span><span id="spell-answer" class="spell" lang="en"></span>
-            <button type="button" id="btn-say" class="btn small btn-say" aria-label="発音を聞く">🔊</button></div>
-          <div class="spell-row" id="spell-input-row"><span class="spell-label">あなた</span><span id="spell-input" class="spell" lang="en"></span></div>
-        </div>
+        <!-- 答えと書いたつづり(過去形は、現在形と過去形の 2 つ) -->
+        <div id="spell-box" class="spell-box"></div>
+        <div class="row say-row"><button type="button" id="btn-say" class="btn small btn-say" aria-label="発音を聞く">🔊 発音</button></div>
         <p id="verdict-note" class="status"></p>
         <div class="row">
           <button type="button" id="btn-override" class="btn">合格にする</button>
